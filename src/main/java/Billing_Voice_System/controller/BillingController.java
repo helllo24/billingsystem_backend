@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import Billing_Voice_System.entity.BillRaw;
+import java.util.List;
 import java.io.IOException;
 @CrossOrigin("*")
 @RestController
@@ -53,6 +55,11 @@ public class BillingController {
 
 
     }
+    @GetMapping("/{id}")
+    public ResponseEntity<FinalBillDto> getBill(@PathVariable Long id) {
+        return ResponseEntity.ok(billService.getBillid(id));
+    }
+
     @GetMapping("/pdf/{id}")
     public ResponseEntity<byte[]> getpdf(@PathVariable Long id){
 
@@ -64,5 +71,24 @@ public class BillingController {
                 .header("Content-Disposition", "attachment; filename=bill.pdf")
                 .contentType(MediaType.APPLICATION_PDF).body(pdf);
 
+    }
+
+    @GetMapping
+    public ResponseEntity<List<BillRaw>> getAllInvoices() {
+        return ResponseEntity.ok(billService.getAllInvoices());
+    }
+
+    @PostMapping("/upload-audio")
+    public ResponseEntity<FinalBillDto> uploadAudioAndGenerateBill(@RequestParam("file") MultipartFile file) throws IOException {
+        String savedFilename = billService.saveAudioFile(file);
+        System.out.println("Audio file saved successfully: " + savedFilename);
+
+        String text = billingSpeechService.convertAudioToText(file.getBytes());
+        System.out.println("VOICE TEXT FROM UPLOADED AUDIO: " + text);
+
+        RawDto rawDto = new RawDto();
+        rawDto.setText(text);
+
+        return ResponseEntity.ok(billService.generateBil(rawDto));
     }
 }

@@ -12,10 +12,9 @@ import java.util.List;
 @NoArgsConstructor
 public class FinalBillDto {
 
+    private Long billno;
     private List<ItemDto> items;
     private double total;
-//    private String rawtext;
-//    private LocalDateTime createdat;
 
 
 }

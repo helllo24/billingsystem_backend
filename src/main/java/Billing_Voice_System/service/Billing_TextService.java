@@ -62,6 +62,7 @@ public class Billing_TextService implements BillService {
             billingItemRepository.save(item);
         }
 
+        responce.setBillno(savedBill.getBillno());
         return  responce;
 
     }
@@ -105,5 +106,26 @@ public class Billing_TextService implements BillService {
         return items.stream()
                 .mapToDouble(item -> item.getQty() * item.getPrice())
                 .sum();
+    }
+
+    @Override
+    public List<BillRaw> getAllInvoices() {
+        return billrepo.findAll();
+    }
+
+    @Override
+    public String saveAudioFile(org.springframework.web.multipart.MultipartFile file) {
+        try {
+            java.nio.file.Path uploadDir = java.nio.file.Paths.get("uploads");
+            if (!java.nio.file.Files.exists(uploadDir)) {
+                java.nio.file.Files.createDirectories(uploadDir);
+            }
+            String filename = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+            java.nio.file.Path filePath = uploadDir.resolve(filename);
+            java.nio.file.Files.copy(file.getInputStream(), filePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return filename;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to store audio file", e);
+        }
     }
 }
