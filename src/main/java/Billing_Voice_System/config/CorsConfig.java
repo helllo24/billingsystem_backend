@@ -11,16 +11,17 @@ public class CorsConfig {
     @Bean
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
-
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-
                 registry.addMapping("/**")
                         .allowedOrigins(
                                 "https://billingsystem-frontend-react.vercel.app",
-                                "http://localhost:5173"
+                                "http://127.0.0.1:5500",
+                                "http://localhost:5500",
+                                "http://localhost:5173",
+                                "http://localhost:3000"
                         )
-                        .allowedMethods("*")
+                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true);
             }

@@ -13,8 +13,9 @@ import org.springframework.web.multipart.MultipartFile;
 import Billing_Voice_System.entity.BillRaw;
 import java.util.List;
 import java.io.IOException;
-@CrossOrigin("https://billingsystem-frontend-react.vercel.app/")
+
 @RestController
+
 
 @RequestMapping("Bill")
 
@@ -55,7 +56,7 @@ public class BillingController {
 
 
     }
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<FinalBillDto> getBill(@PathVariable Long id) {
         return ResponseEntity.ok(billService.getBillid(id));
     }

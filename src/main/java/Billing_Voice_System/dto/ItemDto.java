@@ -19,5 +19,12 @@ public class ItemDto {
     private double totalprice;
 
 
+    public double getTotalPrice() {
+        return 0;
+    }
 
+    public Double getTotalprice() {
+
+        return 0.0;
+    }
 }
