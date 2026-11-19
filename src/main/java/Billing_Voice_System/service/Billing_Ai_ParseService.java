@@ -1,20 +1,16 @@
+
 package Billing_Voice_System.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
+
 import Billing_Voice_System.dto.FinalBillDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class Billing_Ai_ParseService {
@@ -23,108 +19,168 @@ public class Billing_Ai_ParseService {
     private String apiKey;
 
     private static final String BASE_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=";
+            "https://generativelanguage.googleapis.com/v1beta/models/";
+
+    private static final String PRIMARY_MODEL = "gemini-3.8-flash";
+    private static final String FALLBACK_MODEL = "gemini-3.5-flash-lite";
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public FinalBillDto parerText(String input) {
 
         String prompt = """
-                You are a billing assistant.
-                Convert the given text into a structured JSON bill.
-                
-                STRICT RULES:
-                1. Return ONLY valid JSON
-                2. Extract: name, qty, price, totalprice, unit
-                3. qty must be a number
-                4. unit must be one of: kg, litre, piece (default = piece)
-                
-                PRICE RULE:
-                - price = per unit price
-                - totalprice = total price for that item
-                
-                EXAMPLES:
-                - "1 kg apple 100 rs" -> price = 100, totalprice = 100
-                - "5 kg onion 100 rs" -> totalprice = 100, price = 20
-                
-                OTHER RULES:
-                5. If qty missing -> qty = 1
-                6. If price missing -> price = 0
-                7. If total not given -> totalprice = qty * price
-                8. Support Tamil & English
-                
-                IMPORTANT:
-                - total = sum of all totalprice
-                
-                INPUT:
-                "%s"
-                
-                OUTPUT FORMAT:
-                {
-                  "items": [
-                    {
-                      "name": "string",
-                      "qty": number,
-                      "price": number,
-                      "totalprice": number,
-                      "unit": "kg/litre/piece"
-                    }
-                  ],
-                  "total": number
-                }
-                """.formatted(input);
+            You are a billing assistant.
+            Convert the given text into a structured JSON bill.
 
-        RestTemplate restTemplate = new RestTemplate();
+            STRICT RULES:
+            1. Return ONLY valid JSON
+            2. Extract: name, qty, price, totalprice, unit
+            3. qty must be a number
+            4. unit must be kg, litre, or piece (default piece)
+
+            PRICE RULE:
+            - price = per unit price
+            - totalprice = total price for that item
+
+            EXAMPLES:
+            - "1 kg apple 100 rs" -> price=100, totalprice=100
+            - "5 kg onion 100 rs" -> price=20, totalprice=100
+
+            OTHER RULES:
+            5. If qty missing -> qty=1
+            6. If price missing -> price=0
+            7. If total not given -> totalprice=qty*price
+            8. Support Tamil and English
+            9. total = sum of all totalprice
+
+            INPUT:
+            "%s"
+
+            OUTPUT FORMAT:
+            {
+              "items": [
+                {
+                  "name": "string",
+                  "qty": 1,
+                  "price": 100,
+                  "totalprice": 100,
+                  "unit": "kg"
+                }
+              ],
+              "total": 100
+            }
+            """.formatted(input);
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        Map<String, Object> box1 = new HashMap<>();
-        box1.put("text", prompt);
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", prompt);
 
-        Map<String, Object> box2 = new HashMap<>();
-        box2.put("parts", List.of(box1));
+        Map<String, Object> content = new HashMap<>();
+        content.put("parts", List.of(part));
 
         Map<String, Object> body = new HashMap<>();
-        body.put("contents", List.of(box2));
-        body.put("generationConfig", Map.of("response_mime_type", "application/json"));
+        body.put("contents", List.of(content));
+        body.put("generationConfig",
+                Map.of("response_mime_type", "application/json"));
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        HttpEntity<Map<String, Object>> request =
+                new HttpEntity<>(body, headers);
 
-        int maxRetries = 3;
-        long backoff = 1500;
+        // First primary model, then fallback model
+        List<String> models = List.of(PRIMARY_MODEL, FALLBACK_MODEL);
 
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                ResponseEntity<Map> response = restTemplate.postForEntity(BASE_URL + apiKey, request, Map.class);
-                Map<String, Object> responseBody = response.getBody();
+        for (String model : models) {
 
-                if (responseBody != null && responseBody.containsKey("candidates")) {
-                    List<Map<String, Object>> answers = (List<Map<String, Object>>) responseBody.get("candidates");
-                    Map<String, Object> firstAnswer = answers.get(0);
-                    Map<String, Object> content = (Map<String, Object>) firstAnswer.get("content");
-                    List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
+            int maxRetries = 3;
+            long backoff = 1500;
 
-                    String jsonText = parts.get(0).get("text").toString().trim();
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
 
-                    ObjectMapper mapper = new ObjectMapper();
-                    return mapper.readValue(jsonText, FinalBillDto.class);
-                }
-            } catch (HttpStatusCodeException e) {
-                int status = e.getStatusCode().value();
-                if ((status == 503 || status == 429) && attempt < maxRetries) {
-                    System.out.println("Gemini service busy (" + status + "). Retrying attempt " + (attempt + 1) + "...");
-                    try {
-                        Thread.sleep(backoff);
-                        backoff *= 2;
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
+                try {
+                    String url = BASE_URL + model
+                            + ":generateContent?key=" + apiKey;
+
+                    ResponseEntity<Map> response =
+                            restTemplate.postForEntity(
+                                    url, request, Map.class);
+
+                    Map<?, ?> responseBody = response.getBody();
+
+                    if (responseBody == null ||
+                            !responseBody.containsKey("candidates")) {
+                        throw new RuntimeException(
+                                "Gemini returned an empty response");
                     }
-                    continue;
+
+                    List<?> candidates =
+                            (List<?>) responseBody.get("candidates");
+
+                    Map<?, ?> firstCandidate =
+                            (Map<?, ?>) candidates.get(0);
+
+                    Map<?, ?> responseContent =
+                            (Map<?, ?>) firstCandidate.get("content");
+
+                    List<?> parts =
+                            (List<?>) responseContent.get("parts");
+
+                    Map<?, ?> firstPart = (Map<?, ?>) parts.get(0);
+
+                    String jsonText =
+                            firstPart.get("text").toString().trim();
+
+                    System.out.println("Gemini model used: " + model);
+                    System.out.println("Gemini JSON: " + jsonText);
+
+                    return mapper.readValue(
+                            jsonText, FinalBillDto.class);
+
+                } catch (HttpStatusCodeException e) {
+
+                    int status = e.getStatusCode().value();
+
+                    if (status == 503 || status == 429) {
+
+                        if (attempt < maxRetries) {
+
+                            System.out.println(
+                                    model + " busy (" + status +
+                                            "). Retry " + (attempt + 1));
+
+                            try {
+                                Thread.sleep(backoff);
+                                backoff *= 2;
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw new RuntimeException(
+                                        "Gemini retry interrupted", ie);
+                            }
+
+                            continue;
+                        }
+
+                        System.out.println(
+                                model + " unavailable. Trying next model.");
+
+                        break;
+                    }
+
+                    throw new RuntimeException(
+                            "Gemini API Error [" + status + "]: " +
+                                    e.getResponseBodyAsString(), e);
                 }
-                throw new RuntimeException("Gemini API Error [" + status + "]: " + e.getResponseBodyAsString(), e);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed parsing JSON output: " + e.getMessage(), e);
+                catch (Exception e) {
+                    throw new RuntimeException(
+                            "Failed to parse Gemini response: " +
+                                    e.getMessage(), e);
+                }
             }
         }
 
-        throw new RuntimeException("No response received from Gemini after retry attempts");
+        throw new RuntimeException(
+                "Both Gemini models are currently unavailable. Please try again later.");
     }
 }
