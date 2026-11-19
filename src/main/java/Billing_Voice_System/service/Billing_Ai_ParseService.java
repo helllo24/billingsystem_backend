@@ -22,7 +22,8 @@ public class Billing_Ai_ParseService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=";
+    private static final String BASE_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=";
 
     public FinalBillDto parerText(String input) {
 
